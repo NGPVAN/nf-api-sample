@@ -11,6 +11,9 @@
                 $nf->setClient($_POST['client']);
                 $nf->requestAuthorization();
                 break;
+            case 'logout':
+                $nf->clearAuthentication();
+                break;
         }
      } elseif (isset($_GET['code'])) {
          if ($nf->requestToken($_GET['code'])) {
@@ -35,6 +38,15 @@
             <p>Your Site: https://<input type="text" size="20" name="client" value="testing" />.nationalfield.org</p>
             <p><input type="submit" value="Log In" /></p>
         <form>
-	<?php endif; //isAuthenticated ?>
+    <?php else: ?>
+        <form method="post">
+            <input type="hidden" name="action" value="logout" />
+            <p><input type="submit" value="Log Out" /></p>
+        <form>
+        <h2>Groups</h2>
+        <pre><?php print_r($nf->getGroups()) ?></pre>
+        <h2>Roles</h2>
+        <pre><?php print_r($nf->getRoles()) ?></pre>
+    <?php endif; //isAuthenticated ?>
 </body>
 </html>
