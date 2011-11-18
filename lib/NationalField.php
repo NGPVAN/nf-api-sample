@@ -13,7 +13,7 @@ class NationalField {
         $this->secret = $secret;
     }
 
-    public function requestAuthorization()
+    public function authenticate()
     {
         $authUrl = $this->getAuthBaseUrl() . '/authenticate' .
                    '?client_id=' . urlencode($this->key) .
