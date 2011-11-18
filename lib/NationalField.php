@@ -13,6 +13,11 @@ class NationalField {
         $this->secret = $secret;
     }
 
+    public function setClient($client)
+    {
+        $this->setSessionValue('client', $client);
+    }
+
     public function authenticate()
     {
         $authUrl = $this->getAuthBaseUrl() . '/authenticate' .
@@ -25,14 +30,16 @@ class NationalField {
 
     public function requestToken($authorizationCode)
     {
-        $authUrl = $this->getAuthBaseUrl() . '/access_token' .
-                   '?client_id=' . urlencode($this->key) .
-                   '&client_secret=' . urlencode($this->secret) .
-                   '&grant_type=authorization_code' .
-                   '&code=' . urlencode($authorizationCode) .
-                   '&redirect_uri=' . urlencode($this->getRedirectUri());
+        $authUrl = $this->getAuthBaseUrl() . '/access_token';
+        $params = array(
+           'client_id' => $this->key,
+           'client_secret' => $this->secret,
+           'grant_type' => 'authorization_code',
+           'code' => $authorizationCode,
+           'redirect_uri' => $this->getRedirectUri()
+        );
 
-        $json = $this->getJson($authUrl);
+        $json = $this->makeJsonRequest($authUrl, $params);
 
         if ($json && isset($json['access_token'])) {
             $this->setSessionValue('authenticated', true);
@@ -49,32 +56,19 @@ class NationalField {
         $this->setSessionValue('access_token', null);
     }
 
-    public function getGroups()
-    {
-        return $this->makeApiRequest('groups');
-    }
-
-    public function getRoles()
-    {
-        return $this->makeApiRequest('roles');
-    }
-
     public function isAuthenticated()
     {
         $authenticated = $this->getSessionValue('authenticated');
         return ($authenticated === true);
     }
 
-    public function setClient($client)
+    public function api($resource, $params = array(), $method = 'GET')
     {
-        $this->setSessionValue('client', $client);
-    }
-
-    protected function makeApiRequest($resource, $params = array())
-    {
+        // all calls require auth
         $params['access_token'] = $this->getSessionValue('access_token');
-        $url = $this->getApiBaseUrl() . '/' . $resource . '?' . http_build_query($params);
-        return $this->getJson($url);
+
+        $url = $this->getApiBaseUrl() . '/' . $resource;
+        return $this->makeJsonRequest($url, $params, $method);
     }
 
     protected function initSession()
@@ -120,21 +114,56 @@ class NationalField {
 
     protected function getRedirectUri($action = null)
     {
-        $uri = (isset($_SERVER['HTTPS']) ? 'https' : 'http') . '://' .
-            $_SERVER['HTTP_HOST'] . $_SERVER['PHP_SELF'];
+        $uri = (isset($_SERVER['HTTPS']) ? 'https' : 'http') .
+            '://' .
+            $_SERVER['HTTP_HOST'] .
+            $_SERVER['PHP_SELF'];
         return $uri;
     }
 
-    protected function getJson($url)
+    protected function makeJsonRequest($url, $params = null, $method = 'GET')
     {
+        $raw = $this->makeRequest($url, $params, $method);
+        return json_decode($raw, true);
+    }
+
+    protected function makeRequest($url, $params = null, $method = 'GET')
+    {
+        $method = strtoupper($method);
+
         $ch = curl_init();
+
+        switch($method)
+        {
+            case 'GET':
+                if (!is_null($params)) $url .= '?' . http_build_query($params);
+                break;
+            
+            case 'POST':
+                curl_setopt($ch, CURLOPT_POST, true);
+                if (!is_null($params)) curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($params));
+                break;
+            
+            case 'PUT':
+                curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PUT');
+                if (!is_null($params)) curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($params));
+                break;
+            
+            case 'DELETE':
+                curl_setopt($handle, CURLOPT_CUSTOMREQUEST, 'DELETE');
+                if (!is_null($params)) curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($params));
+                break;
+
+            default:
+                throw new Exception('Unsupported method "' . $method . '"');
+        }
+
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_FAILONERROR, 1);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
         curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-        $raw = curl_exec($ch);
 
-        return json_decode($raw, true);
+        return curl_exec($ch);
     }
 
     protected function redirect($url)

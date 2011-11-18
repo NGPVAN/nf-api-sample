@@ -43,10 +43,10 @@
             <input type="hidden" name="action" value="logout" />
             <p><input type="submit" value="Log Out" /></p>
         <form>
-        <h2>Groups</h2>
-        <pre><?php print_r($nf->getGroups()) ?></pre>
-        <h2>Roles</h2>
-        <pre><?php print_r($nf->getRoles()) ?></pre>
+        <h2>Groups:</h2>
+        <pre><?php print_r($nf->api('groups')) ?></pre>
+        <h2>Roles:</h2>
+        <pre><?php print_r($nf->api('roles')) ?></pre>
     <?php endif; //isAuthenticated ?>
 </body>
 </html>
