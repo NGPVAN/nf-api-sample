@@ -43,6 +43,8 @@
             <input type="hidden" name="action" value="logout" />
             <p><input type="submit" value="Log Out" /></p>
         <form>
+        <h2>You:</h2>
+        <pre><?php print_r($nf->api('users/me')) ?></pre>
         <h2>Groups:</h2>
         <pre><?php print_r($nf->api('groups')) ?></pre>
         <h2>Roles:</h2>
