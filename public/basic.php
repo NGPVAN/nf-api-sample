@@ -3,20 +3,22 @@
 
     require_once NF_APISAMPLE_BASEDIR . '/lib/NationalField.php';
 
-    $nf = new NationalField(NF_APISAMPLE_KEY, NF_APISAMPLE_SECRET);
+    $nf = new NationalField(NF_APISAMPLE_KEY, NF_APISAMPLE_SECRET, 'basic');
 
     if (isset($_POST['action'])) {
+        // login/logout
         switch ($_POST['action']) {
             case 'login':
                 $nf->setClient($_POST['client']);
-                $nf->authenticate();
+                $nf->redirectForAuthentication();
                 break;
             case 'logout':
                 $nf->clearAuthentication();
                 break;
         }
     } elseif (isset($_GET['code'])) {
-        if ($nf->requestToken($_GET['code'])) {
+        // authorization response
+        if ($nf->completeAuthentication($_GET['code'])) {
             header('location: ' . $_SERVER['PHP_SELF']);
             exit;
         }
