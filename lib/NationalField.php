@@ -1,35 +1,160 @@
 <?php
 
+/**
+ * Helper class for the NationalField API
+ */
 class NationalField {
 
+    /**
+     * The OAuth client key
+     *
+     * @var string
+     */
     protected $key;
+
+    /**
+     * The OAuth client secret
+     *
+     * @var string
+     */
     protected $secret;
 
-    protected $session_key = 'nf_apisample';
+    /**
+     * Current user id
+     *
+     * @var integer
+     */
+    protected $user_id;
 
-    public function __construct($key, $secret)
+    /**
+     * Session storage key
+     *
+     * @var string
+     */
+    protected $session_key = 'nf_api';
+
+    /**
+     * Constructor
+     *
+     * @param string $key Oauth client key
+     * @param string $secret Oauth client secret
+     * @param string $session_suffix Addition to the session key to allow
+     *                               multiple applications using the same store
+     */
+    public function __construct($key, $secret, $session_suffix = null)
     {
         $this->key = $key;
         $this->secret = $secret;
+
+        if (is_string($session_suffix)) {
+            $this->session_key .= '_' . $session_suffix;
+        }
     }
 
+    // Configuration
+
+    /**
+     * Set the NationalField client name
+     *
+     * @param string $client
+     */
     public function setClient($client)
     {
         $this->setSessionValue('client', $client);
     }
 
-    public function authenticate()
+    /**
+     * Get the NationalField client name
+     *
+     * @return string
+     */
+    public function getClient()
     {
-        $authUrl = $this->getAuthBaseUrl() . '/authenticate' .
-                   '?client_id=' . urlencode($this->key) .
-                   '&response_type=code' .
-                   '&redirect_uri=' . urlencode($this->getRedirectUri());
+        return $this->getSessionValue('client');
+    }
+
+    /**
+     * Set the application URI
+     *
+     * Used for redirects. If not set, the script's URL will be used.
+     *
+     * @param string $uri
+     */
+    public function setUri($uri)
+    {
+        $this->setSessionValue('uri', $uri);
+    }
+
+    /**
+     * Get the application URI
+     *
+     * @return string
+     */
+    public function getUri()
+    {
+        return $this->getSessionValue('uri');
+    }
+
+    // Authentication/Authorization
+
+    /**
+     * Get the ID of the authenticated user
+     * 
+     * Checks local cache, session, and signed params.
+     *
+     * @return integer
+     */
+    public function getUserId()
+    {
+        if (!is_null($this->user_id)) {
+            return $this->user_id;
+        }
+
+        return $this->user_id = $this->detectUser();
+    }
+
+    /**
+     * Check is there is an authenticated user
+     *
+     * @return boolean
+     */
+    public function isAuthenticated()
+    {
+        return (!is_null($this->getUserId()));
+    }
+
+    /**
+     * Get the NationalField URL for authentication
+     *
+     * @return string
+     */
+    public function getAuthenticationUrl()
+    {
+        return $this->getAuthBaseUrl() . '/authenticate' .
+               '?client_id=' . urlencode($this->key) .
+               '&response_type=code' .
+               '&redirect_uri=' . urlencode($this->getRedirectUri());
+    }
+
+    /**
+     * Redirect to NationalField for authentication
+     */
+    public function redirectForAuthentication()
+    {
+        $authUrl = $this->getAuthenticationUrl();
 
         $this->redirect($authUrl);
     }
 
-    public function requestToken($authorizationCode)
+    /**
+     * Exchange the authorization code for an access token
+     *
+     * @param string $authorizationCode
+     * @return boolean
+     */
+    public function completeAuthentication($authorizationCode)
     {
+        // get access token
         $authUrl = $this->getAuthBaseUrl() . '/access_token';
         $params = array(
            'client_id' => $this->key,
@@ -41,27 +166,42 @@ class NationalField {
 
         $json = $this->makeJsonRequest($authUrl, $params);
 
+        // if succesfull, get user id with 'me' call
         if ($json && isset($json['access_token'])) {
-            $this->setSessionValue('authenticated', true);
             $this->setSessionValue('access_token', $json['access_token']);
-            return true;
+
+            if ($me = $this->api('users/me')) {
+                $this->setSessionValue('user_id', $me['id']);
+                return true;
+            } else {
+                $this->clearAuthentication();
+            }
         }
 
         return false;
     }
-    
+
+    /**
+     * Clear authentication from the session
+     */
     public function clearAuthentication()
     {
-        $this->setSessionValue('authenticated', false);
+        $this->setSessionValue('user_id', null);
         $this->setSessionValue('access_token', null);
     }
 
-    public function isAuthenticated()
-    {
-        $authenticated = $this->getSessionValue('authenticated');
-        return ($authenticated === true);
-    }
+    // API Calls
 
+    /**
+     * Call the NationalField API
+     *
+     * Uses the stored access token
+     *
+     * @param string $resource Path to the resource
+     * @param array $params Parameters to send
+     * @param string $method HTTP method
+     * @return mixed array or false
+     */
     public function api($resource, $params = array(), $method = 'GET')
     {
         // all calls require auth
@@ -71,6 +211,65 @@ class NationalField {
         return $this->makeJsonRequest($url, $params, $method);
     }
 
+    // Internal methods
+
+    /**
+     * Determine the authenticated user
+     *
+     * First, check for signed parameters. If so, use those, and clear authentication
+     * if they don't match. Second, use the session value.
+     *
+     * @return integer
+     */
+    protected function detectUser()
+    {
+        $params = $this->decodeParams();
+        if ($params) {
+            $this->setClient($params['client']);
+            $this->setUri($params['url']);
+
+            if (isset($params['user_id']) && isset($params['access_token'])) {
+                $this->setSessionValue('access_token', $params['access_token']);
+                $this->setSessionValue('user_id', $params['user_id']);
+            } else {
+                $this->clearAuthentication();
+                return null;
+            }
+        }
+
+        return $this->getSessionValue('user_id');
+    }
+
+    /**
+     * Decode the signed parameters (if present)
+     *
+     * Checks the signature and returns false if not matching. Otherwise
+     * returns the decoded json array.
+     *
+     * @return mixed
+     */
+    protected function decodeParams()
+    {
+        if (isset($_POST['signed_params'])) {
+            list($encodedSignature, $encodedJson) = explode('.', $_POST['signed_params'], 2);
+
+            $signature = base64_decode($encodedSignature);
+            $json = base64_decode($encodedJson);
+
+            if ($signature != hash_hmac('sha256', $json, $this->secret, true)) {
+                return false;
+            }
+
+            $params = json_decode($json, true);
+
+            if (json_last_error() == JSON_ERROR_NONE) {
+                return $params;
+            }
+        }
+
+        return false;
+    }
+    
     protected function initSession()
     {
         if (session_id() == '') {
@@ -96,10 +295,15 @@ class NationalField {
         $_SESSION[$this->session_key][$key] = $value;
     }
 
+    protected function clearSession()
+    {
+        $this->initSession();
+        unset($_SESSION[$this->session_key]);
+    }
+
     protected function getAuthBaseUrl()
     {
         return 'http://' . $this->getHostname() . '/frontend_dev.php/oauth';
-
     }
 
     protected function getApiBaseUrl()
@@ -112,21 +316,48 @@ class NationalField {
         return $this->getSessionValue('client') . '.nationalfield.localhost';
     }
 
-    protected function getRedirectUri($action = null)
+    protected function getRedirectUri()
     {
-        $uri = (isset($_SERVER['HTTPS']) ? 'https' : 'http') .
-            '://' .
-            $_SERVER['HTTP_HOST'] .
-            $_SERVER['PHP_SELF'];
+        $uri = $this->getUri();
+        if (is_null($uri))
+        {
+            $uri = (isset($_SERVER['HTTPS']) ? 'https' : 'http') .
+                   '://' .
+                   $_SERVER['HTTP_HOST'] .
+                   $_SERVER['PHP_SELF'];
+            $this->setUri($uri);
+        }
         return $uri;
     }
 
+    /**
+     * Make an HTTP request and process the result as JSON
+     *
+     * @param string $url
+     * @param array $params Parameters to send
+     * @param string $method HTTP method
+     * @return mixed array or false
+     */
     protected function makeJsonRequest($url, $params = null, $method = 'GET')
     {
         $raw = $this->makeRequest($url, $params, $method);
-        return json_decode($raw, true);
+        $response = json_decode($raw, true);
+
+        if (json_last_error() == JSON_ERROR_NONE) {
+            return $response;
+        }
+
+        return false;
     }
 
+    /**
+     * Make an HTTP request
+     *
+     * @param string $url
+     * @param array $params Parameters to send
+     * @param string $method HTTP method
+     * @return string
+     */
     protected function makeRequest($url, $params = null, $method = 'GET')
     {
         $method = strtoupper($method);
