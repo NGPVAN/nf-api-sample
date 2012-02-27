@@ -2,6 +2,9 @@
 
 define('NF_APISAMPLE_BASEDIR', dirname(dirname(__FILE__)));
 
+// include library
+require_once NF_APISAMPLE_BASEDIR . '/lib/NationalField.php';
+
 // load config
 $configFile = NF_APISAMPLE_BASEDIR . '/config/config.php';
 

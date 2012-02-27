@@ -33,6 +33,10 @@ class NationalField {
      */
     protected $session_key = 'nf_api';
 
+    public static $baseDomain = 'nationalfield.com';
+    public static $apiPath = '/api/v1';
+    public static $frontendPath = '';
+
     /**
      * Constructor
      *
@@ -303,17 +307,17 @@ class NationalField {
 
     protected function getAuthBaseUrl()
     {
-        return 'http://' . $this->getHostname() . '/frontend_dev.php/oauth';
+        return 'http://' . $this->getHostname() . self::$frontendPath . '/oauth';
     }
 
     protected function getApiBaseUrl()
     {
-        return 'http://' . $this->getHostname() . '/rest_dev.php';
+        return 'http://' . $this->getHostname() . self::$apiPath;
     }
 
     protected function getHostname()
     {
-        return $this->getSessionValue('client') . '.nationalfield.localhost';
+        return $this->getSessionValue('client') . '.' . self::$baseDomain;
     }
 
     protected function getRedirectUri()

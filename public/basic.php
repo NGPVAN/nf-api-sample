@@ -1,8 +1,6 @@
 <?php
     require_once '../lib/setup.php';
 
-    require_once NF_APISAMPLE_BASEDIR . '/lib/NationalField.php';
-
     $nf = new NationalField(NF_APISAMPLE_KEY, NF_APISAMPLE_SECRET, 'basic');
 
     if (isset($_POST['action'])) {
